@@ -22,6 +22,8 @@ import io.cdap.wrangler.api.parser.TokenType;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -409,5 +411,143 @@ public class TimeDurationTest {
   @Test(expected = IllegalArgumentException.class)
   public void testNegativeValue() {
     new TimeDuration("-10s"); // Negative time values should throw exception
+  }
+  
+  /**
+   * Tests the new getUnitName method.
+   */
+  @Test
+  public void testGetUnitName() {
+    TimeDuration nanosecondsDuration = new TimeDuration("500ns");
+    Assert.assertEquals("nanoseconds", nanosecondsDuration.getUnitName());
+    
+    TimeDuration millisecondsDuration = new TimeDuration("100ms");
+    Assert.assertEquals("milliseconds", millisecondsDuration.getUnitName());
+    
+    TimeDuration secondsDuration = new TimeDuration("10s");
+    Assert.assertEquals("seconds", secondsDuration.getUnitName());
+    
+    TimeDuration minutesDuration = new TimeDuration("5m");
+    Assert.assertEquals("minutes", minutesDuration.getUnitName());
+    
+    TimeDuration hoursDuration = new TimeDuration("2h");
+    Assert.assertEquals("hours", hoursDuration.getUnitName());
+    
+    TimeDuration daysDuration = new TimeDuration("1d");
+    Assert.assertEquals("days", daysDuration.getUnitName());
+  }
+  
+  /**
+   * Tests the new convertToUnit method.
+   */
+  @Test
+  public void testConvertToUnit() {
+    // Test converting from seconds to other units
+    TimeDuration tenSecondsDuration = new TimeDuration("10s");
+    
+    TimeDuration toNanos = tenSecondsDuration.convertToUnit("ns");
+    Assert.assertEquals("ns", toNanos.getUnit());
+    Assert.assertEquals(10 * NANOS_PER_SECOND, toNanos.getNanos());
+    
+    TimeDuration toMillis = tenSecondsDuration.convertToUnit("ms");
+    Assert.assertEquals("ms", toMillis.getUnit());
+    Assert.assertEquals(10 * MILLIS_PER_SECOND, toMillis.getNumericValue(), STANDARD_DELTA);
+    
+    TimeDuration toMinutes = tenSecondsDuration.convertToUnit("m");
+    Assert.assertEquals("m", toMinutes.getUnit());
+    Assert.assertEquals(10.0 / SECONDS_PER_MINUTE, toMinutes.getNumericValue(), SMALL_DELTA);
+    
+    // Test case-insensitivity in conversion
+    TimeDuration toHoursUppercase = tenSecondsDuration.convertToUnit("H");
+    Assert.assertEquals("h", toHoursUppercase.getUnit());
+    Assert.assertEquals(10.0 / (SECONDS_PER_MINUTE * MINUTES_PER_HOUR), toHoursUppercase.getNumericValue(), SMALL_DELTA);
+  }
+  
+  /**
+   * Tests that invalid target unit in convertToUnit throws appropriate exception.
+   */
+  @Test(expected = IllegalArgumentException.class)
+  public void testInvalidConversionUnit() {
+    TimeDuration duration = new TimeDuration("10s");
+    duration.convertToUnit("invalid"); // Should throw IllegalArgumentException
+  }
+  
+  /**
+   * Tests the new isEquivalentTo method.
+   */
+  @Test
+  public void testIsEquivalentTo() {
+    TimeDuration oneMinute = new TimeDuration("1m");
+    TimeDuration sixtySeconds = new TimeDuration("60s");
+    TimeDuration oneHundredTwentySeconds = new TimeDuration("120s");
+    
+    Assert.assertTrue("One minute should be equivalent to 60 seconds", 
+                      oneMinute.isEquivalentTo(sixtySeconds));
+    Assert.assertTrue("60 seconds should be equivalent to one minute", 
+                      sixtySeconds.isEquivalentTo(oneMinute));
+    Assert.assertFalse("One minute should not be equivalent to 120 seconds", 
+                       oneMinute.isEquivalentTo(oneHundredTwentySeconds));
+    Assert.assertFalse("Null comparison should return false", 
+                       oneMinute.isEquivalentTo(null));
+  }
+  
+  /**
+   * Tests equals and hashCode implementations.
+   */
+  @Test
+  public void testEqualsAndHashCode() {
+    TimeDuration duration1 = new TimeDuration("60s");
+    TimeDuration duration2 = new TimeDuration("1m");
+    TimeDuration duration3 = new TimeDuration("60s");
+    TimeDuration differentDuration = new TimeDuration("30s");
+    
+    // Test reflexivity
+    Assert.assertEquals(duration1, duration1);
+    
+    // Test symmetry
+    Assert.assertEquals(duration1, duration3);
+    Assert.assertEquals(duration3, duration1);
+    
+    // Test equivalence relationship
+    Assert.assertEquals(duration1, duration2);
+    Assert.assertEquals(duration2, duration3);
+    
+    // Test inequality
+    Assert.assertNotEquals(duration1, differentDuration);
+    Assert.assertNotEquals(differentDuration, duration1);
+    
+    // Test null and different type handling
+    Assert.assertNotEquals(duration1, null);
+    Assert.assertNotEquals(duration1, "String");
+    
+    // Test hashCode consistency with equals
+    Assert.assertEquals(duration1.hashCode(), duration2.hashCode());
+    Assert.assertEquals(duration2.hashCode(), duration3.hashCode());
+    Assert.assertNotEquals(duration1.hashCode(), differentDuration.hashCode());
+    
+    // Test in collections
+    Set<TimeDuration> durationSet = new HashSet<>();
+    durationSet.add(duration1);
+    durationSet.add(duration2); // Should not increase size since equivalent to duration1
+    durationSet.add(duration3); // Should not increase size since equals duration1
+    Assert.assertEquals("Set should contain only one unique duration", 1, durationSet.size());
+    
+    durationSet.add(differentDuration);
+    Assert.assertEquals("Set should now contain two unique durations", 2, durationSet.size());
+  }
+  
+  /**
+   * Tests the enhanced JSON representation.
+   */
+  @Test
+  public void testEnhancedJsonRepresentation() {
+    TimeDuration duration = new TimeDuration("10.5m");
+    JsonObject json = (JsonObject) duration.toJson();
+    
+    Assert.assertEquals("TIME_DURATION", json.get("type").getAsString());
+    Assert.assertEquals("10.5m", json.get("value").getAsString());
+    Assert.assertEquals(10.5 * SECONDS_PER_MINUTE * NANOS_PER_SECOND, json.get("nanos").getAsLong());
+    Assert.assertEquals("m", json.get("unit").getAsString());
+    Assert.assertEquals(10.5, json.get("numericValue").getAsDouble(), SMALL_DELTA);
   }
 }
